@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Time Off Requests</title>
+<style>
+  :root{
+    --imsg-received:#E9E9EB;
+    --imsg-sent-a:#0A84FF;
+    --imsg-sent-b:#0066FF;
+    --chat-bg:#FFFFFF;
+    --header-bg:rgba(248,248,250,0.94);
+    --text-primary:#000000;
+    --text-secondary:#8E8E93;
+    --border:#E5E5EA;
+    --accent:#0B84FF;
+    --danger:#FF3B30;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; height:100%; background:var(--chat-bg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--text-primary);
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{height:100%; display:flex; flex-direction:column;}
+
+  /* ---------- CHAT VIEW ---------- */
+  #chat-view{display:flex; flex-direction:column; height:100%;}
+  .chat-header{
+    background:var(--header-bg); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+    padding:10px 14px; display:flex; align-items:center; gap:10px;
+    position:sticky; top:0; z-index:5;
+  }
+  .avatar{
+    width:34px; height:34px; border-radius:50%;
+    background:linear-gradient(180deg,#B7BEC7,#8E96A1);
+    color:#fff; display:flex; align-items:center; justify-content:center;
+    font-size:13px; font-weight:600; flex-shrink:0;
+  }
+  .header-text{display:flex; flex-direction:column; line-height:1.2;}
+  .header-text .label{font-size:10px; color:var(--text-secondary); letter-spacing:.2px;}
+  .header-text .name{font-size:15px; font-weight:600;}
+
+  #messages{
+    flex:1; overflow-y:auto; padding:16px 12px 8px; display:flex; flex-direction:column; gap:4px;
+    background:var(--chat-bg);
+  }
+  .day-stamp{
+    text-align:center; font-size:11px; color:var(--text-secondary); margin:6px 0 10px;
+  }
+  .row{display:flex; width:100%; margin:2px 0;}
+  .row.bot{justify-content:flex-start;}
+  .row.user{justify-content:flex-end;}
+  .bubble{
+    max-width:78%; padding:9px 14px; font-size:15px; line-height:1.32;
+    animation:pop .18s ease-out;
+  }
+  @keyframes pop{ from{opacity:0; transform:scale(.85);} to{opacity:1; transform:scale(1);} }
+  .bubble.bot{ background:var(--imsg-received); color:#000; border-radius:18px 18px 18px 4px; }
+  .bubble.user{ background:linear-gradient(180deg,var(--imsg-sent-a),var(--imsg-sent-b)); color:#fff; border-radius:18px 18px 4px 18px; }
+
+  .typing-dots{ display:flex; gap:4px; padding:12px 14px; background:var(--imsg-received); border-radius:18px 18px 18px 4px; width:fit-content;}
+  .typing-dots span{ width:7px; height:7px; border-radius:50%; background:#9A9AA0; animation:bounce 1.2s infinite ease-in-out;}
+  .typing-dots span:nth-child(2){animation-delay:.15s;}
+  .typing-dots span:nth-child(3){animation-delay:.3s;}
+  @keyframes bounce{ 0%,60%,100%{transform:translateY(0); opacity:.5;} 30%{transform:translateY(-4px); opacity:1;} }
+
+  .option-card, .picker-card, .summary-card{
+    background:#F5F5F7; border:1px solid var(--border); border-radius:16px;
+    padding:12px; max-width:82%;
+  }
+  .opt-btn{
+    display:block; width:100%; text-align:left; padding:10px 12px; margin:6px 0;
+    background:#fff; border:1px solid var(--border); border-radius:12px;
+    font-size:15px; cursor:pointer; transition:background .12s;
+  }
+  .opt-btn:hover{background:#EFEFF3;}
+  .opt-btn:active{background:#E4E4EA;}
+  .picker-card label{display:block; font-size:12px; color:var(--text-secondary); margin:8px 0 3px;}
+  .picker-card input[type=date], .picker-card input[type=text]{
+    width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:10px; font-size:15px; background:#fff;
+  }
+  .mode-row{display:flex; gap:14px; margin:2px 0 4px; font-size:13.5px;}
+  .mode-row label{display:flex; align-items:center; gap:5px; margin:0; font-weight:normal;}
+  .secondary-btn{
+    margin-top:10px; width:100%; padding:9px; background:#fff; color:var(--accent);
+    border:1px solid var(--accent); border-radius:12px; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  .secondary-btn:hover{background:#EAF4FF;}
+  .date-chip{
+    display:flex; justify-content:space-between; align-items:center; background:#fff;
+    border:1px solid var(--border); border-radius:10px; padding:7px 10px; margin-top:6px; font-size:13.5px;
+  }
+  .date-chip button{background:none; border:none; color:var(--danger); font-size:16px; line-height:1; cursor:pointer; padding:0 2px;}
+  .primary-btn{
+    margin-top:10px; width:100%; padding:10px; background:var(--accent); color:#fff;
+    border:none; border-radius:12px; font-size:15px; font-weight:600; cursor:pointer;
+  }
+  .primary-btn:disabled{opacity:.4; cursor:not-allowed;}
+  .err-text{color:var(--danger); font-size:12px; margin-top:6px; display:none;}
+
+  .summary-card{max-width:88%;}
+  .summary-row{display:flex; justify-content:space-between; padding:5px 0; font-size:14px; border-bottom:1px solid var(--border); gap:14px;}
+  .summary-row:last-child{border-bottom:none;}
+  .summary-row .k{color:var(--text-secondary); flex-shrink:0;}
+  .summary-row .v{font-weight:600; text-align:right;}
+  .restart-link{
+    text-align:center; margin:14px 0 6px; font-size:13px; color:var(--accent); cursor:pointer; text-decoration:underline;
+  }
+
+  #composer-row{
+    display:none; gap:8px; padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    border-top:1px solid var(--border); background:var(--header-bg); backdrop-filter:blur(10px);
+  }
+  #composer-input{
+    flex:1; padding:9px 14px; border-radius:20px; border:1px solid var(--border);
+    font-size:15px; outline:none; background:#F0F0F3;
+  }
+  #composer-send{
+    width:34px; height:34px; border-radius:50%; border:none; background:var(--accent);
+    color:#fff; font-size:16px; cursor:pointer; flex-shrink:0;
+  }
+  #composer-send:disabled{background:#C7C7CC; cursor:not-allowed;}
+
+  /* ---------- PRINTABLE QR VIEW (?qr=1) ---------- */
+  .qr-only{
+    display:none; height:100%; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; background:#fff;
+  }
+  .qr-only .qr-caption{font-size:16px; font-weight:600;}
+  .qr-only .qr-sub{font-size:13px; color:var(--text-secondary);}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- CHAT VIEW -->
+  <div id="chat-view">
+    <div class="chat-header">
+      <div class="avatar">HR</div>
+      <div class="header-text">
+        <span class="label">TIME OFF ASSISTANT</span>
+        <span class="name">Request a Day Off</span>
+      </div>
+    </div>
+    <div id="messages"></div>
+    <div id="composer-row">
+      <input id="composer-input" type="text" autocomplete="off" placeholder="Type a message" />
+      <button id="composer-send" onclick="handleComposerSend()">↑</button>
+    </div>
+  </div>
+
+  <!-- PRINTABLE QR VIEW: open this same link with ?qr=1 to get a clean, full-screen QR code to print or post -->
+  <div id="qr-view" class="qr-only">
+    <div id="qrcode-el"></div>
+    <div class="qr-caption">Scan to request time off</div>
+    <div class="qr-sub">Opens a private chat — nobody can see other people's requests here.</div>
+    <div id="qr-fallback" style="display:none; text-align:center; padding:0 24px;">
+      <div class="qr-sub" style="margin-bottom:6px;">Couldn't load the QR image. Use this link instead:</div>
+      <a id="qr-fallback-link" href="#" style="color:var(--accent); word-break:break-all; font-size:13px;"></a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ============ GOOGLE FORM CONFIG ============ */
+/* Submissions go straight into this form; only you can see responses in the linked Google Sheet. */
+const GOOGLE_FORM_ID = "1FAIpQLSeUBQcuGEQTQvvSKX8f1QjTBJYBo4VPvpQ3GmOZHA6pFANqPg";
+const ENTRY_IDS = {
+  name:    "entry.264784857",
+  type:    "entry.2091373116",
+  dates:   "entry.1643277040",
+  days:    "entry.752570935",
+  note:    "entry.682496078",
+  contact: "entry.1590027654"
+};
+
+function submitToGoogleForm(fields){
+  return new Promise((resolve)=>{
+    const iframeName = "hidden_submit_" + Date.now();
+    const iframe = document.createElement("iframe");
+    iframe.name = iframeName;
+    iframe.style.display = "none";
+    document.body.appendChild(iframe);
+
+    const form = document.createElement("form");
+    form.action = `https://docs.google.com/forms/d/e/${GOOGLE_FORM_ID}/formResponse`;
+    form.method = "POST";
+    form.target = iframeName;
+    form.style.display = "none";
+
+    Object.entries(fields).forEach(([key, value])=>{
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+
+    // Google Forms blocks reading the cross-origin response, so we can't confirm
+    // success directly — this is the standard pattern for this kind of integration.
+    setTimeout(()=>{
+      form.remove();
+      iframe.remove();
+      resolve(true);
+    }, 900);
+  });
+}
+
+/* ============ CHAT STATE MACHINE ============ */
+const flow = { step:"name", data:{} };
+const messagesEl = document.getElementById("messages");
+
+function scrollToBottom(){ messagesEl.scrollTop = messagesEl.scrollHeight; }
+
+function stampToday(){
+  const el = document.createElement("div");
+  el.className = "day-stamp";
+  el.textContent = new Date().toLocaleString([], {weekday:'long', hour:'2-digit', minute:'2-digit'});
+  messagesEl.appendChild(el);
+}
+
+function userSay(text){
+  const row = document.createElement("div");
+  row.className = "row user";
+  row.innerHTML = `<div class="bubble user"></div>`;
+  row.querySelector(".bubble").textContent = text;
+  messagesEl.appendChild(row);
+  scrollToBottom();
+}
+
+function botSay(text){
+  const row = document.createElement("div");
+  row.className = "row bot";
+  row.innerHTML = `<div class="bubble bot"></div>`;
+  row.querySelector(".bubble").textContent = text;
+  messagesEl.appendChild(row);
+  scrollToBottom();
+}
+
+function botCard(innerHTML, extraClass){
+  const row = document.createElement("div");
+  row.className = "row bot";
+  const card = document.createElement("div");
+  card.className = (extraClass || "option-card");
+  card.innerHTML = innerHTML;
+  row.appendChild(card);
+  messagesEl.appendChild(row);
+  scrollToBottom();
+  return card;
+}
+
+let typingRow = null;
+function showTyping(){
+  typingRow = document.createElement("div");
+  typingRow.className = "row bot";
+  typingRow.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+  messagesEl.appendChild(typingRow);
+  scrollToBottom();
+}
+function hideTyping(){
+  if(typingRow){ typingRow.remove(); typingRow = null; }
+}
+function botTyping(next, delay){
+  showTyping();
+  setTimeout(()=>{ hideTyping(); next(); }, delay || 700);
+}
+
+function showComposer(placeholder, onSend){
+  const row = document.getElementById("composer-row");
+  const input = document.getElementById("composer-input");
+  row.style.display = "flex";
+  input.placeholder = placeholder;
+  input.value = "";
+  input.disabled = false;
+  input.focus();
+  flow.onSend = onSend;
+}
+function hideComposer(){
+  document.getElementById("composer-row").style.display = "none";
+}
+function handleComposerSend(){
+  const input = document.getElementById("composer-input");
+  const text = input.value.trim();
+  if(!text || !flow.onSend) return;
+  flow.onSend(text);
+}
+document.getElementById("composer-input").addEventListener("keydown", (e)=>{
+  if(e.key === "Enter") handleComposerSend();
+});
+
+/* ---- flow steps ---- */
+function startFlow(){
+  messagesEl.innerHTML = "";
+  flow.step = "name"; flow.data = {};
+  stampToday();
+  botTyping(()=>{
+    botSay("Welcome to Marcucci Dental Time Off Requests! 👋");
+    botTyping(()=>{
+      botSay("I can help you request a vacation, sick, or personal day — it only takes a minute.");
+      botTyping(()=>{
+        botSay("First, what's your name?");
+        showComposer("Your name", handleName);
+      }, 800);
+    }, 900);
+  }, 500);
+}
+
+function handleName(text){
+  flow.data.name = text;
+  userSay(text);
+  hideComposer();
+  const firstName = text.split(" ")[0];
+  botTyping(()=>{
+    botSay(`Nice to meet you, ${firstName}! Is this for vacation, feeling sick, or something else?`);
+    showTypeOptions();
+  });
+}
+
+function showTypeOptions(){
+  const card = botCard(`
+    <button class="opt-btn" onclick="selectType('Vacation','🏖️')">🏖️ Vacation</button>
+    <button class="opt-btn" onclick="selectType('Sick','🤒')">🤒 Feeling sick</button>
+    <button class="opt-btn" onclick="selectType('Personal','📝')">📝 Personal / other</button>
+  `);
+  flow._typeCard = card;
+}
+
+function selectType(type, emoji){
+  flow.data.type = type;
+  if(flow._typeCard) flow._typeCard.remove();
+  userSay(`${emoji} ${type}`);
+  botTyping(()=>{
+    if(type === "Sick"){
+      botSay("Sorry to hear that! Which day(s) will you be out?");
+    } else {
+      botSay("Great! Which days do you need off?");
+    }
+    showDatePicker();
+  });
+}
+
+function fmtShort(d){ return new Date(d + "T00:00:00").toLocaleDateString([], {month:'short', day:'numeric'}); }
+
+function formatDateRanges(ranges){
+  if(!ranges || !ranges.length) return "";
+  return ranges.map(r => r.start === r.end ? fmtShort(r.start) : `${fmtShort(r.start)}–${fmtShort(r.end)}`).join(", ");
+}
+
+function showDatePicker(){
+  const today = new Date().toISOString().split("T")[0];
+  flow._dateEntries = [];
+  const card = botCard(`
+    <div class="picker-card">
+      <div class="mode-row">
+        <label><input type="radio" name="date-mode" value="single" checked onchange="onModeChange()"> Single day</label>
+        <label><input type="radio" name="date-mode" value="range" onchange="onModeChange()"> Range of days</label>
+      </div>
+      <label id="entry-start-label">Date</label>
+      <input type="date" id="entry-start" min="${today}" value="${today}" onchange="onEntryStartChange()">
+      <label id="entry-end-label" style="display:none;">Through</label>
+      <input type="date" id="entry-end" min="${today}" value="${today}" style="display:none;">
+      <button class="secondary-btn" type="button" onclick="addDateEntry()">+ Add these dates</button>
+      <div id="date-entry-list"></div>
+      <div class="err-text" id="date-err">Add at least one date before continuing.</div>
+      <button class="primary-btn" onclick="confirmDates()">That's all — continue</button>
+    </div>
+  `, "picker-card-wrap");
+  flow._dateCard = card;
+}
+
+function onModeChange(){
+  const isRange = document.querySelector('input[name="date-mode"]:checked').value === "range";
+  const endInput = document.getElementById("entry-end");
+  const endLabel = document.getElementById("entry-end-label");
+  const startLabel = document.getElementById("entry-start-label");
+  endInput.style.display = isRange ? "block" : "none";
+  endLabel.style.display = isRange ? "block" : "none";
+  startLabel.textContent = isRange ? "From" : "Date";
+  if(!isRange){ endInput.value = document.getElementById("entry-start").value; }
+}
+
+function onEntryStartChange(){
+  const start = document.getElementById("entry-start").value;
+  const endInput = document.getElementById("entry-end");
+  const isRange = document.querySelector('input[name="date-mode"]:checked').value === "range";
+  endInput.min = start;
+  if(!isRange || endInput.value < start){ endInput.value = start; }
+}
+
+function addDateEntry(){
+  const start = document.getElementById("entry-start").value;
+  const isRange = document.querySelector('input[name="date-mode"]:checked').value === "range";
+  const end = isRange ? document.getElementById("entry-end").value : start;
+  if(!start || !end || end < start) return;
+  flow._dateEntries.push({start, end});
+  renderDateEntryList();
+  document.getElementById("date-err").style.display = "none";
+
+  const next = new Date(end + "T00:00:00");
+  next.setDate(next.getDate() + 1);
+  const nextStr = next.toISOString().split("T")[0];
+  document.getElementById("entry-start").min = nextStr;
+  document.getElementById("entry-start").value = nextStr;
+  document.getElementById("entry-end").min = nextStr;
+  document.getElementById("entry-end").value = nextStr;
+}
+
+function removeDateEntry(i){
+  flow._dateEntries.splice(i, 1);
+  renderDateEntryList();
+}
+
+function renderDateEntryList(){
+  const listEl = document.getElementById("date-entry-list");
+  listEl.innerHTML = flow._dateEntries.map((r, i) => `
+    <div class="date-chip">
+      <span>${r.start === r.end ? fmtShort(r.start) : fmtShort(r.start) + "–" + fmtShort(r.end)}</span>
+      <button type="button" onclick="removeDateEntry(${i})">×</button>
+    </div>
+  `).join("");
+}
+
+function confirmDates(){
+  if(flow._dateEntries.length === 0){
+    addDateEntry();
+  }
+  if(flow._dateEntries.length === 0){
+    document.getElementById("date-err").style.display = "block";
+    return;
+  }
+  const days = flow._dateEntries.reduce((sum, r) => sum + Math.round((new Date(r.end) - new Date(r.start)) / 86400000) + 1, 0);
+  flow.data.dateRanges = flow._dateEntries.slice();
+  flow.data.days = days;
+
+  if(flow._dateCard) flow._dateCard.remove();
+  const label = formatDateRanges(flow.data.dateRanges);
+  userSay(`${label} (${days} day${days>1?"s":""})`);
+
+  botTyping(()=>{
+    botSay("Want to add a note or explanation for your manager? It's totally optional.");
+    showNoteOptions();
+  });
+}
+
+function showNoteOptions(){
+  const card = botCard(`
+    <button class="opt-btn" onclick="chooseAddNote()">📝 Add a note</button>
+    <button class="opt-btn" onclick="skipNote()">Skip</button>
+  `);
+  flow._noteCard = card;
+}
+
+function chooseAddNote(){
+  if(flow._noteCard) flow._noteCard.remove();
+  userSay("📝 Add a note");
+  botTyping(()=>{
+    botSay("Go ahead, type it below.");
+    showComposer("Type your note...", handleNote);
+  });
+}
+
+function skipNote(){
+  if(flow._noteCard) flow._noteCard.remove();
+  userSay("Skip");
+  flow.data.note = "";
+  askForContact();
+}
+
+function handleNote(text){
+  flow.data.note = text;
+  userSay(text);
+  hideComposer();
+  askForContact();
+}
+
+function askForContact(){
+  botTyping(()=>{
+    botSay("Got it! Last thing — what's the best phone number or email for your confirmation?");
+    showComposer("Phone or email", handleContact);
+  });
+}
+
+function isValidContact(text){
+  const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const phone = /^[\d\s()+\-.]{7,}$/;
+  return email.test(text) || phone.test(text);
+}
+
+function handleContact(text){
+  if(!isValidContact(text)){
+    userSay(text);
+    document.getElementById("composer-input").value = "";
+    botTyping(()=>{
+      botSay("Hmm, that doesn't quite look like a valid phone number or email — mind trying again?");
+    });
+    return;
+  }
+  flow.data.contact = text;
+  userSay(text);
+  hideComposer();
+
+  const record = {
+    name: flow.data.name,
+    type: flow.data.type,
+    dateRanges: flow.data.dateRanges,
+    days: flow.data.days,
+    note: flow.data.note || "",
+    contact: flow.data.contact
+  };
+
+  botTyping(async ()=>{
+    await submitToGoogleForm({
+      [ENTRY_IDS.name]: record.name,
+      [ENTRY_IDS.type]: record.type,
+      [ENTRY_IDS.dates]: formatDateRanges(record.dateRanges),
+      [ENTRY_IDS.days]: String(record.days),
+      [ENTRY_IDS.note]: record.note,
+      [ENTRY_IDS.contact]: record.contact
+    });
+    botSay("All set! ✅ Here's your request:");
+    botCard(`
+      <div class="summary-row"><span class="k">Employee</span><span class="v">${escapeHtml(record.name)}</span></div>
+      <div class="summary-row"><span class="k">Type</span><span class="v">${record.type}</span></div>
+      <div class="summary-row"><span class="k">Dates</span><span class="v">${escapeHtml(formatDateRanges(record.dateRanges))}</span></div>
+      <div class="summary-row"><span class="k">Days</span><span class="v">${record.days}</span></div>
+      ${record.note ? `<div class="summary-row"><span class="k">Note</span><span class="v">${escapeHtml(record.note)}</span></div>` : ""}
+      <div class="summary-row"><span class="k">Contact</span><span class="v">${escapeHtml(record.contact)}</span></div>
+    `, "summary-card");
+    botTyping(()=>{
+      botSay("Your request has been sent to your manager.");
+      const restart = document.createElement("div");
+      restart.className = "restart-link";
+      restart.textContent = "Submit another request";
+      restart.onclick = startFlow;
+      messagesEl.appendChild(restart);
+      scrollToBottom();
+    }, 700);
+  }, 900);
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, (c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+/* ============ INIT ============ */
+const params = new URLSearchParams(window.location.search);
+if(params.get("qr") === "1"){
+  document.getElementById("chat-view").style.display = "none";
+  document.getElementById("qr-view").style.display = "flex";
+  const cleanUrl = window.location.origin + window.location.pathname;
+  const qrImg = document.createElement("img");
+  qrImg.width = 220;
+  qrImg.height = 220;
+  qrImg.alt = "QR code to open the time off request chat";
+  qrImg.style.borderRadius = "8px";
+  qrImg.src = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" + encodeURIComponent(cleanUrl);
+  qrImg.onerror = ()=>{
+    qrImg.style.display = "none";
+    const fallback = document.getElementById("qr-fallback");
+    const link = document.getElementById("qr-fallback-link");
+    link.href = cleanUrl;
+    link.textContent = cleanUrl;
+    fallback.style.display = "block";
+  };
+  document.getElementById("qrcode-el").appendChild(qrImg);
+} else {
+  startFlow();
+}
+</script>
+</body>
+</html>
